@@ -27,18 +27,17 @@ class TemplatePlugin extends OntoWiki_Plugin
 
             $predicates = $model->getPredicates();
             $description = $resource->getDescription();
-
-            if ($this->_privateConfig->template->restrictive) {
+//            if ($this->_privateConfig->template->restrictive) {
                 foreach ($description as $resource) {
                     if (isset($resource[EF_RDF_TYPE])) {
                         $type = $resource[EF_RDF_TYPE][0]['value'];
                     }
-                }
+//                }
 
                 $query = new Erfurt_Sparql_SimpleQuery();
                 $query->setProloguePart('PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> SELECT DISTINCT ?uri');
                 $query->addFrom((string)$event->graph);
-                $query->setWherePart( '{?template a <' . $_template . '> .
+                $query->setWherePart( '{?template a <' . $this->_template . '> .
                                         ?template erm:providesProperty ?uri .
                                         ?template erm:bindsClass <' . $type . '> .
                                     } '
@@ -74,11 +73,14 @@ class TemplatePlugin extends OntoWiki_Plugin
 
     public function onRDFAuthorInitActionTemplate($event)
     {
-        $store  = Erfurt_App::getInstance()->getStore();
-        $config = Erfurt_App::getInstance()->getConfig();
-
         $model = $event->model;
         $resource = $event->resource;
+        $providedProperties = $this->_getProvidedProperties($resource);
+        if (!empty($providedProperties)) {
+            foreach ($providedProperties as $property) {
+                $additionalQuery .= '?s <' . $property . '> ?o . ' . PHP_EOL;
+            }
+        }
         $properties = $model->sparqlQuery('
                 PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/>
                 SELECT DISTINCT ?uri ?value {
@@ -113,5 +115,37 @@ class TemplatePlugin extends OntoWiki_Plugin
 
         $event->properties = $properties;
         return true;
+    }
+
+    /**
+     * Method returns an array of properties for a given classUri if a template 
+     * that binds this class exist
+     * @param string $classUri
+     * @return array $properties
+     */
+    private function _getProvidedProperties($classUri)
+    {
+        $store  = Erfurt_App::getInstance()->getStore();
+
+        $query = new Erfurt_Sparql_SimpleQuery();
+        $query->setProloguePart('PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> SELECT DISTINCT ?property');
+        $query->setWherePart( '{?template a <' . $this->_template . '> .
+                                ?template erm:providesProperty ?property .
+                                ?template erm:bindsClass <' . $classUri . '> .
+                            } '
+                );
+        $query->setLimit('20');
+
+        $result = $store->sparqlQuery($query);
+
+        if (!empty($result)) {
+            $properties = array();
+            foreach ($result as $property) {
+                $properties[] = $property['property'];
+            }
+        return $properties;
+        } else {
+            return false;
+        }
     }
 }
