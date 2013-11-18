@@ -7,7 +7,7 @@
  */
 
 /**
- * Plugin to provide template vie
+ * Plugin to provide template view
  *
  * @category   OntoWiki
  * @package    Extensions_Template
@@ -18,21 +18,23 @@ class TemplatePlugin extends OntoWiki_Plugin
 
     public function onPropertiesActionTemplate($event)
     {
-            $store  = Erfurt_App::getInstance()->getStore();
-            $config = Erfurt_App::getInstance()->getConfig();
+        $store  = Erfurt_App::getInstance()->getStore();
+        $config = Erfurt_App::getInstance()->getConfig();
 
-            $model    = $event->model;
-            $graph    = $event->graph;
-            $resource = $event->resource;
+        $model    = $event->model;
+        $graph    = $event->graph;
+        $resource = $event->resource;
 
-            $predicates = $model->getPredicates();
-            $description = $resource->getDescription();
-//            if ($this->_privateConfig->template->restrictive) {
-                foreach ($description as $resource) {
-                    if (isset($resource[EF_RDF_TYPE])) {
-                        $type = $resource[EF_RDF_TYPE][0]['value'];
-                    }
-//                }
+        $predicates = $model->getPredicates();
+        $description = $resource->getDescription();
+            if ($this->_privateConfig->template->restrictive) {
+            foreach ($description as $resource) {
+                if (isset($resource[EF_RDF_TYPE])) {
+                    $type = $resource[EF_RDF_TYPE][0]['value'];
+                } else {
+                    return false;
+                }
+            }
 
                 $query = new Erfurt_Sparql_SimpleQuery();
                 $query->setProloguePart('PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> SELECT DISTINCT ?uri');
@@ -47,8 +49,7 @@ class TemplatePlugin extends OntoWiki_Plugin
             }
 
             if(!empty($result)) {
-                // flatten Array and flip keys with values to use 
-                // array_intersect_key
+                // flatten Array and flip keys with values to use array_intersect_key
                 $result = array_map(function($x) {return array_flip($x);},$result);
                 // FIXME Find a method to add standard properties which will be 
                 // displayed by default
@@ -59,7 +60,6 @@ class TemplatePlugin extends OntoWiki_Plugin
                 foreach ($result as $newKey => $newValue) {
                     $newResult = array_merge($newResult,$newValue);
                 }
-
 
                 $matched = array_intersect_key($predicates[(string)$graph],$newResult);
                 $matched = array((string)$graph=>$matched);
@@ -75,12 +75,7 @@ class TemplatePlugin extends OntoWiki_Plugin
     {
         $model = $event->model;
         $resource = $event->resource;
-        $providedProperties = $this->_getProvidedProperties($resource);
-        if (!empty($providedProperties)) {
-            foreach ($providedProperties as $property) {
-                $additionalQuery .= '?s <' . $property . '> ?o . ' . PHP_EOL;
-            }
-        }
+
         $properties = $model->sparqlQuery('
                 PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/>
                 SELECT DISTINCT ?uri ?value {
@@ -95,57 +90,16 @@ class TemplatePlugin extends OntoWiki_Plugin
 
         // if a template suits the class (reosurceuri) add rdf:type
         if (!empty($properties['results']['bindings'])) {
-            $templateFound = true;
-        }
-
-        if ($templateFound) {
             $properties['results']['bindings'] =
                     array_merge(array(array('uri' => array(
                                     'value' => "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
                                     'type' => 'uri'))),
                                 $properties['results']['bindings']);
         } else {
-            $properties = $model->sparqlQuery(
-                'SELECT DISTINCT ?uri ?value {
-                    ?s ?uri ?value.
-                    ?s a <'. $resource . '>.
-                    } LIMIT 20 ', array('result_format' => 'extended')
-                );
+            return false;
         }
 
         $event->properties = $properties;
         return true;
-    }
-
-    /**
-     * Method returns an array of properties for a given classUri if a template 
-     * that binds this class exist
-     * @param string $classUri
-     * @return array $properties
-     */
-    private function _getProvidedProperties($classUri)
-    {
-        $store  = Erfurt_App::getInstance()->getStore();
-
-        $query = new Erfurt_Sparql_SimpleQuery();
-        $query->setProloguePart('PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> SELECT DISTINCT ?property');
-        $query->setWherePart( '{?template a <' . $this->_template . '> .
-                                ?template erm:providesProperty ?property .
-                                ?template erm:bindsClass <' . $classUri . '> .
-                            } '
-                );
-        $query->setLimit('20');
-
-        $result = $store->sparqlQuery($query);
-
-        if (!empty($result)) {
-            $properties = array();
-            foreach ($result as $property) {
-                $properties[] = $property['property'];
-            }
-        return $properties;
-        } else {
-            return false;
-        }
     }
 }
