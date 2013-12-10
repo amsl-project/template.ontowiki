@@ -90,7 +90,7 @@ class TemplatePlugin extends OntoWiki_Plugin
                 } LIMIT 20'
             );
             // Template exists
-            if (!empty($predicates)) {
+            if (!empty($providedProperties)) {
                 foreach ($providedProperties as $predicate) {
                     $po = $model->sparqlQuery('
                         PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/>
@@ -127,10 +127,39 @@ class TemplatePlugin extends OntoWiki_Plugin
                                 'type'  => 'uri'))),
                             $properties['results']['bindings']);
         } else {
-            return false;
+            if ($workingMode == 'class') {
+                $properties = $this->_getPropertiesFromVocab($providedProperties);
+            } else {
+                return false;
+            }
         }
 
         $event->properties = $properties;
         return true;
+    }
+
+    /**
+     * This method can be called if there exists a template that suits a class 
+     * but there are no instances of this class. It will search these 
+     * properties in the store and set values according to the rdfs:range of 
+     * the found properties
+     * @param array $providedProperties the return value of the SPARQL query to 
+     * find provided properties of a template
+     * @return array $properties the newly created array containing the 
+     * properties with correct typed literal values or without if no vocabulary 
+     * was found
+     */
+    private function _getPropertiesFromVocab(array $providedProperties)
+    {
+        $properties = array();
+        foreach ($providedProperties as $property) {
+            $query = $model->sparqlQuery('
+                    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                    SELECT DISTINCT ?type WHERE {
+                        ?s <' . $property['value'] . '> rdfs:range .
+                        ?s <' . $property['value'] . '> ?type .
+                    }
+                ');
+        }
     }
 }
