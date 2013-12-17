@@ -77,60 +77,114 @@ class TemplatePlugin extends OntoWiki_Plugin
         $model       = $event->model;
         $workingMode = $event->mode;
         $resource    = $event->resource;
-        $class       = $event->class;
+        $parameter   = $event->parameter;
 
-        if ($workingMode = 'class')
-        {
-            $providedProperties = $model->sparqlQuery('
-                PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/>
-                SELECT ?uri WHERE {
-                    ?template a <' . $this->_template . '> ;
-                    erm:bindsClass <' . $resource . '> ;
-                    erm:providesProperty ?uri .
-                } LIMIT 20'
-            );
-            // Template exists
-            if (!empty($providedProperties)) {
-                foreach ($providedProperties as $predicate) {
-                    $po = $model->sparqlQuery('
-                        PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/>
-                        SELECT ?uri ?value {
-                            ?s ?uri ?value .
-                            ?s a <' . $class . '> .
-                            FILTER (sameTerm(?uri, <' . $providedProperties . '>))
-                        }
-                    ');
-                    $properties = $array_merge($properties, $po);
+        $query = 'SELECT DISTINCT ?class WHERE { ' . PHP_EOL;
+        $query.= '<' . $resource . '> a ?class . } ' . PHP_EOL;
+
+        $class = $model->sparqlQuery($query);
+
+        if ($workingMode == 'class')
+        { 
+            if (!empty($class)) {
+                if ($class['0']['uri'] == $resource) {
+                    $parameter = $resource;
                 }
-            } else {
+            }
+
+            $query = 'PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> ' . PHP_EOL;
+            $query.= 'SELECT DISTINCT ?uri WHERE { ' . PHP_EOL;
+            $query.= '?template a <' . $this->_template . '> . ' . PHP_EOL;
+            $query.= '?template erm:bindsClass <' . $parameter . '> . ' . PHP_EOL;
+            $query.= 'OPTIONAL { ?template erm:providesProperty ?uri . }} ' . PHP_EOL;
+
+            $properties = $model->sparqlQuery($query, array('result_format' => 'extended'));
+            $result = $properties['results']['bindings'];
+
+            if (empty($result)) {
                 return false;
             }
-        } elseif ($workingMode = 'edit') {
-            $properties = $model->sparqlQuery('
-                PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/>
-                SELECT ?uri ?value {
-                    ?template a <' . $this->_template . '> ;
-                    erm:providesProperty ?uri ;
-                    erm:bindsClass <' . $class . '> .
-                    OPTIONAL {
-                        <' . $resource . '> ?uri ?value .
-                    } 
-                } LIMIT 20 ', array('result_format' => 'extended')
-            );
-        }
 
-        // if a template suits the class (reosurceuri) add rdf:type
-        if (!empty($properties['results']['bindings'])) {
-            $properties['results']['bindings'] =
-                array_merge(array(array('uri' => array(
-                                'value' => "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                                'type'  => 'uri'))),
-                            $properties['results']['bindings']);
+            $provided = array();
+
+            foreach ($result as $property) {
+                $provided[] = $property['uri']['value'];
+            }
+
+            $query = 'PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ' . PHP_EOL;
+            $query.= 'PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ' . PHP_EOL;
+            $query.= 'PREFIX owl: <http://www.w3.org/2002/07/owl#>' . PHP_EOL;
+            $query.= 'SELECT DISTINCT ?uri ?typed WHERE ' . PHP_EOL;
+            $query.= '{ ' . PHP_EOL;
+            $query.= '  { ' . PHP_EOL;
+            $query.= '    ?uri rdfs:range ?typed . ' . PHP_EOL;
+            $query.= '    ?uri a          ?type . ' . PHP_EOL;
+            $query.= '  } ' . PHP_EOL;
+            $query.= '  { ' . PHP_EOL;
+            $query.= '               {?uri a rdf:Property . } ' . PHP_EOL;
+            $query.= '      OPTIONAL {?uri a rdfs:Property . } ' . PHP_EOL;
+            $query.= '      OPTIONAL {?uri a owl:DatatypeProperty . } ' . PHP_EOL;
+            $query.= '  } ' . PHP_EOL;
+            $query.= '  FILTER ( ' . PHP_EOL;
+            $query.= '    ?type != owl:ObjectProperty ' . PHP_EOL;
+            $query.= '&& ( ?uri = <' . implode('> || ?uri = <', $provided) . '> ) ' . PHP_EOL;
+            $query.= '  )' . PHP_EOL;
+            $query.= '} ' . PHP_EOL;
+            $query.= '  LIMIT 20 ' . PHP_EOL;
+            $typedLiterals = $model->sparqlQuery($query);
+
+            if (!empty($typedLiterals)) {
+                foreach ($typedLiterals as $typedLiteral) {
+                    $arrayPos = $this->_recursiveArraySearch($typedLiteral['uri'],$result);
+                    if ($arrayPos !== false) {
+                        $properties['results']['bindings'][$arrayPos]
+                            ['value']['type'] = 'literal';
+                        $properties['results']['bindings'][$arrayPos]
+                            ['value']['value'] = '2013-12-17^^' . $typedLiteral['typed'];
+                    }
+                }
+            }
+        } elseif (!empty($class) && $workingMode == 'edit') {
+            $class = $class[0]['class'];
+
+            $query = 'PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> ' . PHP_EOL;
+            $query.= 'SELECT ?uri ?value { ' . PHP_EOL;
+            $query.= '  ?template a <' . $this->_template . '> . ' . PHP_EOL;
+            $query.= '  ?template erm:providesProperty ?uri . ' . PHP_EOL;
+            $query.= '  ?template erm:bindsClass <' . $class . '> . ' . PHP_EOL;
+            $query.= '  <' . $resource . '> ?uri ?value . ' . PHP_EOL;
+            $query.= '} LIMIT 20 ' . PHP_EOL;
+
+            $properties = $model->sparqlQuery($query, array('result_format' => 'extended'));
+            $result = $properties['results']['bindings'];
+
+            if (empty($result)) {
+                return false;
+            }
         } else {
             return false;
         }
 
         $event->properties = $properties;
         return true;
+    }
+
+    /**
+     * Extends array_search functions and returns the key of the haystack
+     * where the needle was found
+     * @param $needle
+     * @param $haystack
+     * @return string $key of the haystack
+     */
+    private function _recursiveArraySearch($needle, $haystack)
+    {
+        foreach($haystack as $key=>$value) {
+                $current_key=$key;
+                if($needle===$value || 
+                    (is_array($value) && $this->_recursiveArraySearch($needle,$value) !== false)) {
+                        return $current_key;
+                }
+            }
+        return false;
     }
 }
