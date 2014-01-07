@@ -68,7 +68,6 @@ class TemplatePlugin extends OntoWiki_Plugin
         } else {
             return false;
         }
-
         return true;
     }
 
@@ -105,31 +104,39 @@ class TemplatePlugin extends OntoWiki_Plugin
                 return false;
             }
 
+            // Add rdf:type and the class
+            $arrayPos = $this->_recursiveArraySearch(EF_RDF_TYPE, $result);
+            if ($arrayPos !== false) {
+                $properties['results']['bindings'][$arrayPos]['value'] = array (
+                    'type' => 'uri',
+                    'value' => '<' . $parameter . '>');
+            } else {
+                $properties['results']['bindings'][] = array(
+                    'uri' => array('type' => 'uri',
+                                'value' => EF_RDF_TYPE),
+                    'value' => array ('type' => 'uri',
+                                'value' => '<' . $parameter . '>'));
+            }
+
             $provided = array();
 
             foreach ($result as $property) {
                 $provided[] = $property['uri']['value'];
             }
 
-            $query = 'PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ' . PHP_EOL;
-            $query.= 'PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ' . PHP_EOL;
-            $query.= 'PREFIX owl: <http://www.w3.org/2002/07/owl#>' . PHP_EOL;
+            $query = 'PREFIX rdfs: <'. EF_RDFS_NS . '>' . PHP_EOL;
+            $query.= 'PREFIX rdf: <' . EF_RDF_NS . '>' . PHP_EOL;
+            $query.= 'PREFIX owl: <' . EF_OWL_NS . '>' . PHP_EOL;
             $query.= 'SELECT DISTINCT ?uri ?typed WHERE ' . PHP_EOL;
             $query.= '{ ' . PHP_EOL;
             $query.= '  { ' . PHP_EOL;
             $query.= '    ?uri rdfs:range ?typed . ' . PHP_EOL;
-            $query.= '    ?uri a          ?type . ' . PHP_EOL;
+            $query.= '    ?uri a          owl:DatatypeProperty . ' . PHP_EOL;
             $query.= '  } ' . PHP_EOL;
-            $query.= '  { ' . PHP_EOL;
-            $query.= '               {?uri a rdf:Property . } ' . PHP_EOL;
-            $query.= '      OPTIONAL {?uri a rdfs:Property . } ' . PHP_EOL;
-            $query.= '      OPTIONAL {?uri a owl:DatatypeProperty . } ' . PHP_EOL;
-            $query.= '  } ' . PHP_EOL;
-            $query.= '  FILTER ( ' . PHP_EOL;
-            $query.= '    ?type != owl:ObjectProperty ' . PHP_EOL;
-            $query.= '&& ( ?uri = <' . implode('> || ?uri = <', $provided) . '> ) ' . PHP_EOL;
-            $query.= '  )' . PHP_EOL;
             $query.= '} ' . PHP_EOL;
+            $query.= '  FILTER ( ' . PHP_EOL;
+            $query.= '    ?uri = <' . implode('> || ?uri = <', $provided) . '> ) ' . PHP_EOL;
+            $query.= '  )' . PHP_EOL;
             $query.= '  LIMIT 20 ' . PHP_EOL;
             $typedLiterals = $model->sparqlQuery($query);
 
@@ -138,14 +145,44 @@ class TemplatePlugin extends OntoWiki_Plugin
                     $arrayPos = $this->_recursiveArraySearch($typedLiteral['uri'],$result);
                     if ($arrayPos !== false) {
                         $properties['results']['bindings'][$arrayPos]
-                            ['value']['type'] = 'literal';
+                            ['value']['type'] = 'typed-literal';
                         $properties['results']['bindings'][$arrayPos]
-                            ['value']['value'] = '2013-12-17^^' . $typedLiteral['typed'];
+                         ['value']['datatype'] = $typedLiteral['typed'];
+
+                        // Set values so rdfauthor can pick the right widgets
+                        if ($typedLiteral['typed'] === EF_XSD_NS . 'date') {
+                            $properties['results']['bindings'][$arrayPos]
+                                ['value']['value'] = date("Y-m-d");
+                        } elseif ($typedLiteral['typed'] === EF_XSD_NS . 'time') {
+                            $properties['results']['bindings'][$arrayPos]
+                                ['value']['value'] = date("H-i-s") . '+01:00';
+                        } elseif ($typedLiteral['typed'] === EF_XSD_DATETIME) {
+                            $properties['results']['bindings'][$arrayPos]
+                                ['value']['value'] = date("Y-m-d") . "T" . date("H-i-s") . '+01:00';
+                        }
                     }
                 }
             }
         } elseif (!empty($class) && $workingMode == 'edit') {
             $class = $class[0]['class'];
+
+            $query = 'PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> ' . PHP_EOL;
+            $query.= 'SELECT DISTINCT ?uri WHERE { ' . PHP_EOL;
+            $query.= '  ?template a <' . $this->_template . '> . ' . PHP_EOL;
+            $query.= '  ?template erm:providesProperty ?uri . ' . PHP_EOL;
+            $query.= '  ?template erm:bindsClass <' . $class . '> . ' . PHP_EOL;
+            $query.= '} LIMIT 20 ' . PHP_EOL;
+
+            $properties = $model->sparqlQuery($query, array('result_format' => 'extended'));
+            $result = $properties['results']['bindings'];
+
+            if (empty($result)) {
+                return false;
+            }
+
+            foreach ($result as $property) {
+                $provided[] = $property['uri']['value'];
+            }
 
             $query = 'PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> ' . PHP_EOL;
             $query.= 'SELECT ?uri ?value { ' . PHP_EOL;
@@ -157,7 +194,6 @@ class TemplatePlugin extends OntoWiki_Plugin
 
             $properties = $model->sparqlQuery($query, array('result_format' => 'extended'));
             $result = $properties['results']['bindings'];
-
             if (empty($result)) {
                 return false;
             }
