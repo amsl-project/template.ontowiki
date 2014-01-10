@@ -21,14 +21,14 @@ class TemplatePlugin extends OntoWiki_Plugin
         $store  = Erfurt_App::getInstance()->getStore();
         $config = Erfurt_App::getInstance()->getConfig();
 
-        $model    = $event->model;
-        $graph    = $event->graph;
-        $resource = $event->resource;
+        $model         = $event->model;
+        $selectedModel = $event->selectedModel;
+        $graph         = $event->graph;
+        $resource      = $event->resource;
+        $predicates    = $model->getPredicates();
+        $description   = $resource->getDescription();
 
-        $predicates = $model->getPredicates();
-        $description = $resource->getDescription();
-
-        if ($this->_privateConfig->template->restrictive) {
+        if (!$this->_privateConfig->template->restrictive) {
             foreach ($description as $resource) {
                 if (isset($resource[EF_RDF_TYPE])) {
                     $type = $resource[EF_RDF_TYPE][0]['value'];
@@ -37,25 +37,44 @@ class TemplatePlugin extends OntoWiki_Plugin
                 }
             }
 
-            $query = new Erfurt_Sparql_SimpleQuery();
-            $query->setProloguePart('PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> SELECT DISTINCT ?uri');
-            $query->addFrom((string)$event->graph);
-            $query->setWherePart( '{?template a <' . $this->_template . '> .
-                                    ?template erm:providesProperty ?uri .
-                                    ?template erm:bindsClass <' . $type . '> .
-                                } '
-                    );
-            $query->setLimit('20');
-            $result = $store->sparqlQuery($query);
+            $result = $this->_getProvidedProperties($selectedModel, $type, false);
         }
 
         if(!empty($result)) {
+            $properties = array();
+            foreach($result as $uri) {
+                $properties[] = $uri['uri'];
+            }
+
+            $typedLiterals = $this->_getDatatypesForProperties($selectedModel, $properties, false);
+
+            // add rdfs:range of properties with type owl:DatatypeProperty
+            $properties = array_flip($properties);
+            $properties = array_fill_keys(array_keys($properties), '');
+
+            if (!empty($typedLiterals)) {
+                $propertyRange = array();
+                foreach ($typedLiterals as $typedLiteral) {
+                    if (array_key_exists($typedLiteral['uri'], $properties)) {
+                        $properties[$typedLiteral['uri']] = array(
+                            'datatype' => $typedLiteral['typed'],
+                            'label' => $typedLiteral['uri']
+                        );
+                    }
+                }
+                $result = array_merge($result, $propertyRange);
+            }
+            // write HTML5 data-* attributes for RDFauthor
+            $html = '<div id=\'template-properties \'data-properties=\'';
+            $html.= json_encode($properties);
+            $html.= '\' ></div>' . PHP_EOL;
+
             // flatten Array and flip keys with values to use array_intersect_key
             $result = array_map(function($x) {return array_flip($x);},$result);
             // FIXME Find a method to add standard properties which will be 
             // displayed by default
-            $result[] = array(EF_RDF_TYPE => "bla");
-            $result[] = array(EF_RDFS_LABEL => "bla");
+            $result[] = array(EF_RDF_TYPE => '');
+            $result[] = array(EF_RDFS_LABEL => '');
             $newResult = array();
 
             foreach ($result as $newKey => $newValue) {
@@ -65,6 +84,7 @@ class TemplatePlugin extends OntoWiki_Plugin
             $matched = array_intersect_key($predicates[(string)$graph],$newResult);
             $matched = array((string)$graph=>$matched);
             $event->predicates = $matched;
+            $event->templateHtml = $html;
         } else {
             return false;
         }
@@ -98,6 +118,7 @@ class TemplatePlugin extends OntoWiki_Plugin
             $query.= 'OPTIONAL { ?template erm:providesProperty ?uri . }} ' . PHP_EOL;
 
             $properties = $model->sparqlQuery($query, array('result_format' => 'extended'));
+            $properties = $this->_getProvidedProperties($model, $parameter, true);
             $result = $properties['results']['bindings'];
 
             if (empty($result)) {
@@ -124,21 +145,7 @@ class TemplatePlugin extends OntoWiki_Plugin
                 $provided[] = $property['uri']['value'];
             }
 
-            $query = 'PREFIX rdfs: <'. EF_RDFS_NS . '>' . PHP_EOL;
-            $query.= 'PREFIX rdf: <' . EF_RDF_NS . '>' . PHP_EOL;
-            $query.= 'PREFIX owl: <' . EF_OWL_NS . '>' . PHP_EOL;
-            $query.= 'SELECT DISTINCT ?uri ?typed WHERE ' . PHP_EOL;
-            $query.= '{ ' . PHP_EOL;
-            $query.= '  { ' . PHP_EOL;
-            $query.= '    ?uri rdfs:range ?typed . ' . PHP_EOL;
-            $query.= '    ?uri a          owl:DatatypeProperty . ' . PHP_EOL;
-            $query.= '  } ' . PHP_EOL;
-            $query.= '} ' . PHP_EOL;
-            $query.= '  FILTER ( ' . PHP_EOL;
-            $query.= '    ?uri = <' . implode('> || ?uri = <', $provided) . '> ) ' . PHP_EOL;
-            $query.= '  )' . PHP_EOL;
-            $query.= '  LIMIT 20 ' . PHP_EOL;
-            $typedLiterals = $model->sparqlQuery($query);
+            $typedLiterals = $this->_getDatatypesForProperties($model, $provided, false);
 
             if (!empty($typedLiterals)) {
                 foreach ($typedLiterals as $typedLiteral) {
@@ -166,14 +173,7 @@ class TemplatePlugin extends OntoWiki_Plugin
         } elseif (!empty($class) && $workingMode == 'edit') {
             $class = $class[0]['class'];
 
-            $query = 'PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> ' . PHP_EOL;
-            $query.= 'SELECT DISTINCT ?uri WHERE { ' . PHP_EOL;
-            $query.= '  ?template a <' . $this->_template . '> . ' . PHP_EOL;
-            $query.= '  ?template erm:providesProperty ?uri . ' . PHP_EOL;
-            $query.= '  ?template erm:bindsClass <' . $class . '> . ' . PHP_EOL;
-            $query.= '} LIMIT 20 ' . PHP_EOL;
-
-            $properties = $model->sparqlQuery($query, array('result_format' => 'extended'));
+            $properties = $this->_getProvidedProperties($model, $class, true);
             $result = $properties['results']['bindings'];
 
             if (empty($result)) {
@@ -222,5 +222,61 @@ class TemplatePlugin extends OntoWiki_Plugin
                 }
             }
         return false;
+    }
+
+    /**
+     * This method fires a SPARQL-Query to find out if a template for a given 
+     * class exists and if so, it looks for the provided properties of this 
+     * template and returns them.
+     * @param $model the model the event object got
+     * @param $class the class needed to find a template
+     * @param boolean $extended determines if Query should use extende results
+     * @return array $result the unverified result of the SPARQL query
+     */
+    private function _getProvidedProperties($model, $class, $extended) 
+    {
+        // Query for create instance (only class needed)
+        $query = new Erfurt_Sparql_SimpleQuery();
+        $query->setProloguePart('PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> SELECT DISTINCT ?uri');
+        $query->setWherePart( '{?template a <' . $this->_template . '> .
+                                ?template erm:providesProperty ?uri .
+                                ?template erm:bindsClass <' . $class . '> .
+                            } '
+                );
+
+        if ($extended === false) {
+            $result = $model->sparqlQuery($query);
+        } else {
+            $result = $model->sparqlQuery($query, array('result_format'=>'extended'));
+        }
+
+        return $result;
+
+    }
+
+    private function _getDatatypesForProperties ($model, $properties, $extended) 
+    {
+        $query = 'PREFIX rdfs: <'. EF_RDFS_NS . '>' . PHP_EOL;
+        $query.= 'PREFIX rdf: <' . EF_RDF_NS . '>' . PHP_EOL;
+        $query.= 'PREFIX owl: <' . EF_OWL_NS . '>' . PHP_EOL;
+        $query.= 'SELECT DISTINCT ?uri ?typed WHERE ' . PHP_EOL;
+        $query.= '{ ' . PHP_EOL;
+        $query.= '  { ' . PHP_EOL;
+        $query.= '    ?uri rdfs:range ?typed . ' . PHP_EOL;
+        $query.= '    ?uri a          owl:DatatypeProperty . ' . PHP_EOL;
+        $query.= '  } ' . PHP_EOL;
+        $query.= '} ' . PHP_EOL;
+        $query.= '  FILTER ( ' . PHP_EOL;
+        $query.= '    ?uri = <' . implode('> || ?uri = <', $properties) . '> ) ' . PHP_EOL;
+        $query.= '  )' . PHP_EOL;
+        $query.= '  LIMIT 20 ' . PHP_EOL;
+
+        if ($extended === false) {
+            $result = $model->sparqlQuery($query);
+        } else {
+            $result = $model->sparqlQuery($query, array('result_format'=>'extended'));
+        }
+
+        return $result;
     }
 }
