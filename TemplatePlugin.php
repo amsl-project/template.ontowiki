@@ -65,7 +65,7 @@ class TemplatePlugin extends OntoWiki_Plugin
                 $result = array_merge($result, $propertyRange);
             }
             // write HTML5 data-* attributes for RDFauthor
-            $html = '<div id=\'template-properties \'data-properties=\'';
+            $html = '<div id=\'template-properties\' data-properties=\'';
             $html.= json_encode($properties);
             $html.= '\' ></div>' . PHP_EOL;
 
