@@ -145,6 +145,9 @@ class TemplatePlugin extends OntoWiki_Plugin
                 $provided[] = $property['uri']['value'];
             }
 
+            $addPropertyValues = array_flip($provided);
+            $addPropertyValues = array_fill_keys(array_keys($addPropertyValues), '');
+
             $typedLiterals = $this->_getDatatypesForProperties($model, $provided, false);
 
             if (!empty($typedLiterals)) {
@@ -168,8 +171,18 @@ class TemplatePlugin extends OntoWiki_Plugin
                                 ['value']['value'] = date("Y-m-d") . "T" . date("H-i-s") . '+01:00';
                         }
                     }
+
+                    if (array_key_exists($typedLiteral['uri'], $addPropertyValues)) {
+                        $addPropertyValues[$typedLiteral['uri']] = array(
+                            'datatype' => $typedLiteral['typed'],
+                            'label' => $typedLiteral['uri']
+                        );
+                    }
                 }
             }
+
+            $event->addPropertyValues = $addPropertyValues;
+
         } elseif (!empty($class) && $workingMode == 'edit') {
             $class = $class[0]['class'];
 
