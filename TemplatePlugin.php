@@ -103,6 +103,7 @@ class TemplatePlugin extends OntoWiki_Plugin
 
         $class = $model->sparqlQuery($query);
 
+        // Class mode
         if ($workingMode == 'class')
         { 
             if (!empty($class)) {
@@ -136,7 +137,23 @@ class TemplatePlugin extends OntoWiki_Plugin
                     'uri' => array('type' => 'uri',
                                 'value' => EF_RDF_TYPE),
                     'value' => array ('type' => 'uri',
-                                'value' => '<' . $parameter . '>'));
+                                      'value' => '<' . $parameter . '>')
+                );
+            }
+
+            // Add rdfs:label with empty value
+            $arrayPos = $this->_recursiveArraySearch(EF_RDFS_LABEL, $result);
+            if ($arrayPos !== false) {
+                $properties['results']['bindings'][$arrayPos]['value'] = array (
+                    'type' => 'uri',
+                    'value' => '');
+            } else {
+                $properties['results']['bindings'][] = array(
+                    'uri' => array('type' => 'uri',
+                                'value' => EF_RDFS_LABEL),
+                    'value' => array ('type' => 'uri',
+                                      'value' => '')
+                );
             }
 
             $provided = array();
@@ -183,6 +200,7 @@ class TemplatePlugin extends OntoWiki_Plugin
 
             $event->addPropertyValues = $addPropertyValues;
 
+        // Edit mode
         } elseif (!empty($class) && $workingMode == 'edit') {
             $class = $class[0]['class'];
 
@@ -207,9 +225,23 @@ class TemplatePlugin extends OntoWiki_Plugin
 
             $properties = $model->sparqlQuery($query, array('result_format' => 'extended'));
             $result = $properties['results']['bindings'];
-            if (empty($result)) {
+
+            $provided = array_flip($provided);
+            $provided = array_fill_keys(array_keys($provided), '');
+
+            if (!empty($result)) {
+                foreach ($result as $typedLiteral) {
+                    if (array_key_exists($typedLiteral['uri']['value'], $provided)) {
+                        $provided[$typedLiteral['uri']['value']] = array(
+                            'datatype' => $typedLiteral['value']['value'],
+                            'label' => $typedLiteral['uri']['value']
+                        );
+                    }
+                }
+            } else {
                 return false;
             }
+            $event->addPropertyValues = $provided;
         } else {
             return false;
         }
