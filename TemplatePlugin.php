@@ -58,7 +58,6 @@ class TemplatePlugin extends OntoWiki_Plugin
                     if (array_key_exists($typedLiteral['uri'], $properties)) {
                         $properties[$typedLiteral['uri']] = array(
                             'datatype' => $typedLiteral['typed'],
-                            'label' => $typedLiteral['uri']
                         );
                     }
                 }
@@ -192,7 +191,6 @@ class TemplatePlugin extends OntoWiki_Plugin
                     if (array_key_exists($typedLiteral['uri'], $addPropertyValues)) {
                         $addPropertyValues[$typedLiteral['uri']] = array(
                             'datatype' => $typedLiteral['typed'],
-                            'label' => $typedLiteral['uri']
                         );
                     }
                 }
@@ -234,7 +232,6 @@ class TemplatePlugin extends OntoWiki_Plugin
                     if (array_key_exists($typedLiteral['uri']['value'], $provided)) {
                         $provided[$typedLiteral['uri']['value']] = array(
                             'datatype' => $typedLiteral['value']['value'],
-                            'label' => $typedLiteral['uri']['value']
                         );
                     }
                 }
