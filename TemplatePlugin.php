@@ -150,7 +150,7 @@ class TemplatePlugin extends OntoWiki_Plugin
                 $properties['results']['bindings'][] = array(
                     'uri' => array('type' => 'uri',
                                 'value' => EF_RDFS_LABEL),
-                    'value' => array ('type' => 'uri',
+                    'value' => array ('type' => '',
                                       'value' => '')
                 );
             }
