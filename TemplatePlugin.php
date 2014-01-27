@@ -144,13 +144,13 @@ class TemplatePlugin extends OntoWiki_Plugin
             $arrayPos = $this->_recursiveArraySearch(EF_RDFS_LABEL, $result);
             if ($arrayPos !== false) {
                 $properties['results']['bindings'][$arrayPos]['value'] = array (
-                    'type' => 'uri',
+                    'type' => 'literal',
                     'value' => '');
             } else {
                 $properties['results']['bindings'][] = array(
                     'uri' => array('type' => 'uri',
                                 'value' => EF_RDFS_LABEL),
-                    'value' => array ('type' => '',
+                    'value' => array ('type' => 'literal',
                                       'value' => '')
                 );
             }
