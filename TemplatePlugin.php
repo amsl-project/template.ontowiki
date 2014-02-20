@@ -28,16 +28,17 @@ class TemplatePlugin extends OntoWiki_Plugin
         $predicates    = $model->getPredicates();
         $description   = $resource->getDescription();
 
-        if (!$this->_privateConfig->template->restrictive) {
+        if ($this->_privateConfig->template->restrictive) {
             foreach ($description as $resource) {
                 if (isset($resource[EF_RDF_TYPE])) {
                     $type = $resource[EF_RDF_TYPE][0]['value'];
-                } else {
-                    return false;
                 }
             }
-
-            $result = $this->_getProvidedProperties($selectedModel, $type, false);
+            if (!isset($type)) {
+                return false;
+            } else {
+                $result = $this->_getProvidedProperties($selectedModel, $type, false);
+            }
         }
 
         if(!empty($result)) {
@@ -120,7 +121,6 @@ class TemplatePlugin extends OntoWiki_Plugin
             $properties = $model->sparqlQuery($query, array('result_format' => 'extended'));
             $properties = $this->_getProvidedProperties($model, $parameter, true);
             $result = $properties['results']['bindings'];
-
             if (empty($result)) {
                 return false;
             }
