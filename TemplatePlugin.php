@@ -185,6 +185,9 @@ class TemplatePlugin extends OntoWiki_Plugin
                         } elseif ($typedLiteral['typed'] === EF_XSD_DATETIME) {
                             $properties['results']['bindings'][$arrayPos]
                                 ['value']['value'] = date("Y-m-d") . "T" . date("H-i-s") . '+01:00';
+                        } elseif ($typedLiteral['typed'] === EF_XSD_DOUBLE) {
+                            $properties['results']['bindings'][$arrayPos]
+                                ['value']['value'] = '0';
                         }
                     }
 
