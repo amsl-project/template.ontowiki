@@ -21,11 +21,10 @@ class TemplatePlugin extends OntoWiki_Plugin
         $store  = Erfurt_App::getInstance()->getStore();
         $config = Erfurt_App::getInstance()->getConfig();
 
-        $model         = $event->model;
         $selectedModel = $event->selectedModel;
         $graph         = $event->graph;
         $resource      = $event->resource;
-        $predicates    = $model->getPredicates();
+        $predicates    = $event->predicates;
         $description   = $resource->getDescription();
 
         if ($this->_privateConfig->template->restrictive) {
@@ -80,7 +79,6 @@ class TemplatePlugin extends OntoWiki_Plugin
             foreach ($result as $newKey => $newValue) {
                 $newResult = array_merge($newResult,$newValue);
             }
-
             $matched = array_intersect_key($predicates[(string)$graph],$newResult);
             $matched = array((string)$graph=>$matched);
             $event->predicates = $matched;
