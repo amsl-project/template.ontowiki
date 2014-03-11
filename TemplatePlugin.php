@@ -79,8 +79,13 @@ class TemplatePlugin extends OntoWiki_Plugin
             foreach ($result as $newKey => $newValue) {
                 $newResult = array_merge($newResult,$newValue);
             }
-            $matched = array_intersect_key($predicates[(string)$graph],$newResult);
-            $matched = array((string)$graph=>$matched);
+            $matched = array();
+            $n = 0;
+            foreach($predicates as $key => $graphPredicates) {
+                $intersect = array_intersect_key($predicates[$key],$newResult);
+                $intersect = array((string)$key=>$intersect);
+                $matched   = array_merge_recursive($intersect, $matched);
+            }
             $event->predicates = $matched;
             $event->templateHtml = $html;
         } else {
