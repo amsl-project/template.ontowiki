@@ -14,18 +14,54 @@
  */
 class TemplatePlugin extends OntoWiki_Plugin
 {
-    private $_template = 'http://vocab.ub.uni-leipzig.de/bibrm/Template';
+    // Set default values (can be overwritten in doap.n3)
+    protected $_templateUri           = 'http://ns.ontowiki.net/SysOnt/Template';
+    protected $_providedPropertiesUri = 'http://ns.ontowiki.net/SysOnt/providesProperty';
+    protected $_optionalPropertiesUri = 'http://ns.ontowiki.net/SysOnt/optionalProperty';
+    protected $_bindsClassUri         = 'http://ns.ontowiki.net/SysOnt/bindsClass';
 
+    protected $_model;
+    protected $_titleHelper;
+
+    public function init()
+    {
+        parent::init();
+
+        // Overwrite URIs with values from doap.n3
+        if (isset($this->_privateConfig->template->templateUri)) {
+            $this->_templateUri = $this->_privateConfig->template->templateUri;
+        }
+
+        if (isset($this->_privateConfig->template->providedPropertiesUri)) {
+            $this->_providedPropertiesUri = $this->_privateConfig->template->providedPropertiesUri;
+        }
+
+        if (isset($this->_privateConfig->template->optionalPropertiesUri)) {
+            $this->_optionalPropertiesUri = $this->_privateConfig->template->optionalPropertiesUri;
+        }
+
+        if (isset($this->_privateConfig->template->bindsClassUri)) {
+            $this->_bindsClassUri = $this->_privateConfig->template->bindsClassUri;
+        }
+    }
+
+    /**
+     * This event can be triggered to manipulate the predicates object returned from 
+     * getPredicates() method for a resource. The method will search for existing 
+     * templates with help of the rdf:type of the resource and will remove the
+     * properties that are not provided by the found tempaltes.
+     */ 
     public function onPropertiesActionTemplate($event)
     {
         $store  = Erfurt_App::getInstance()->getStore();
         $config = Erfurt_App::getInstance()->getConfig();
 
-        $selectedModel = $event->selectedModel;
-        $graph         = $event->graph;
-        $resource      = $event->resource;
-        $predicates    = $event->predicates;
-        $description   = $resource->getDescription();
+        $this->_model       = $event->selectedModel;
+        $graph              = $event->graph;
+        $resource           = $event->resource;
+        $predicates         = $event->predicates;
+        $description        = $resource->getDescription();
+        $this->_titleHelper = new OntoWiki_Model_TitleHelper($this->_model);
 
         if ($this->_privateConfig->template->restrictive) {
             foreach ($description as $resource) {
@@ -33,99 +69,133 @@ class TemplatePlugin extends OntoWiki_Plugin
                     $type = $resource[EF_RDF_TYPE][0]['value'];
                 }
             }
+
             if (!isset($type)) {
                 return false;
             } else {
-                $result = $this->_getProvidedProperties($selectedModel, $type, false);
+                $providedProperties = $this->_getTemplateProperties('provided', $type, false);
+                $optionalProperties = $this->_getTemplateProperties('optional', $type, false);
             }
         }
 
-        if(!empty($result)) {
+        if(!empty($providedProperties)) {
             $properties = array();
-            foreach($result as $uri) {
+
+            foreach ($providedProperties as $uri) {
                 $properties[] = $uri['uri'];
             }
 
-            $typedLiterals = $this->_getDatatypesForProperties($selectedModel, $properties, false);
+            $typedLiterals = $this->_getDatatypesForProperties($properties, false);
 
-            // add rdfs:range of properties with type owl:DatatypeProperty
             $properties = array_flip($properties);
             $properties = array_fill_keys(array_keys($properties), '');
 
             if (!empty($typedLiterals)) {
-                $propertyRange = array();
-                foreach ($typedLiterals as $typedLiteral) {
-                    if (array_key_exists($typedLiteral['uri'], $properties)) {
-                        $properties[$typedLiteral['uri']] = array(
-                            'datatype' => $typedLiteral['typed'],
-                        );
-                    }
-                }
-                $result = array_merge($result, $propertyRange);
+                $properties = $this->_addInformation($properties, $typedLiterals);
+            } else {
+                $properties = $this->_addInformation($properties);
             }
+
             // write HTML5 data-* attributes for RDFauthor
             $html = '<div id=\'template-properties\' data-properties=\'';
             $html.= json_encode($properties);
             $html.= '\' ></div>' . PHP_EOL;
 
+            $propertyRange = array();
+            $providedProperties = array_merge($providedProperties, $propertyRange);
+
             // flatten Array and flip keys with values to use array_intersect_key
-            $result = array_map(function($x) {return array_flip($x);},$result);
+            $providedProperties = array_map(function($x) {return array_flip($x);},$providedProperties);
             // FIXME Find a method to add standard properties which will be 
             // displayed by default
-            $result[] = array(EF_RDF_TYPE => '');
-            $result[] = array(EF_RDFS_LABEL => '');
+            $providedProperties[] = array(EF_RDF_TYPE => '');
+            $providedProperties[] = array(EF_RDFS_LABEL => '');
             $newResult = array();
 
-            foreach ($result as $newKey => $newValue) {
+            foreach ($providedProperties as $newKey => $newValue) {
                 $newResult = array_merge($newResult,$newValue);
             }
+
             $matched = array();
             $n = 0;
+
             foreach($predicates as $key => $graphPredicates) {
                 $intersect = array_intersect_key($predicates[$key],$newResult);
                 $intersect = array((string)$key=>$intersect);
                 $matched   = array_merge_recursive($intersect, $matched);
             }
+
             $event->predicates = $matched;
-            $event->templateHtml = $html;
         } else {
             return false;
         }
+
+        if($optionalProperties !== false) {
+            $properties = array();
+
+            foreach ($optionalProperties as $uri) {
+                $properties[] = $uri['uri'];
+            }
+
+            $typedLiterals = $this->_getDatatypesForProperties($properties, false);
+
+            $properties = array_flip($properties);
+            $properties = array_fill_keys(array_keys($properties), '');
+
+            if (!empty($typedLiterals)) {
+                $properties = $this->_addInformation($properties, $typedLiterals);
+            } else {
+                $properties = $this->_addInformation($properties);
+            }
+
+            // write HTML5 data-* attributes for RDFauthor
+            $html.= '<div id=\'template-optional-properties\' data-properties=\'';
+            $html.= json_encode($properties);
+            $html.= '\' ></div>' . PHP_EOL;
+        }
+
+        $event->templateHtml = $html;
+
         return true;
     }
 
+    /**
+     * This event will be triggered in rdfAuthorInitAction of ServiceController 
+     * to change the behaviour for RDFauthor popover editor.
+     * The result is an manipulated query result so the behaviour of the 
+     * ServiceController won't be affected.
+     * The method will search for existing templates with help of the rdf:type 
+     * of the resource and will remove the properties that are not provided by 
+     * the found templates.
+     */ 
     public function onRDFAuthorInitActionTemplate($event)
     {
-        $model       = $event->model;
-        $workingMode = $event->mode;
-        $resource    = $event->resource;
-        $parameter   = $event->parameter;
+        $this->_model       = $event->model;
+        $workingMode        = $event->mode;
+        $resource           = $event->resource;
+        $parameter          = $event->parameter;
+        $this->_titleHelper = new OntoWiki_Model_TitleHelper($this->_model);
 
         $query = 'SELECT DISTINCT ?class WHERE { ' . PHP_EOL;
         $query.= '<' . $resource . '> a ?class . } ' . PHP_EOL;
 
-        $class = $model->sparqlQuery($query);
+        $class = $this->_model->sparqlQuery($query);
 
         // Class mode
-        if ($workingMode == 'class')
-        { 
+        if ($workingMode == 'class') {
             if (!empty($class)) {
                 if ($class['0']['uri'] == $resource) {
                     $parameter = $resource;
                 }
             }
 
-            $query = 'PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> ' . PHP_EOL;
-            $query.= 'SELECT DISTINCT ?uri WHERE { ' . PHP_EOL;
-            $query.= '?template a <' . $this->_template . '> . ' . PHP_EOL;
-            $query.= '?template erm:bindsClass <' . $parameter . '> . ' . PHP_EOL;
-            $query.= 'OPTIONAL { ?template erm:providesProperty ?uri . }} ' . PHP_EOL;
+            $properties = $this->_getTemplateProperties('provided', $parameter, true);
+            $optionalProperties = $this->_getTemplateProperties('optional', $parameter, true);
 
-            $properties = $model->sparqlQuery($query, array('result_format' => 'extended'));
-            $properties = $this->_getProvidedProperties($model, $parameter, true);
-            $result = $properties['results']['bindings'];
-            if (empty($result)) {
+            if (empty($properties)) {
                 return false;
+            } else {
+                $result = $properties['results']['bindings'];
             }
 
             // Add rdf:type and the class
@@ -164,10 +234,10 @@ class TemplatePlugin extends OntoWiki_Plugin
                 $provided[] = $property['uri']['value'];
             }
 
-            $addPropertyValues = array_flip($provided);
-            $addPropertyValues = array_fill_keys(array_keys($addPropertyValues), '');
+            $typedLiterals = $this->_getDatatypesForProperties($provided, false);
 
-            $typedLiterals = $this->_getDatatypesForProperties($model, $provided, false);
+            $provided = array_flip($provided);
+            $provided = array_fill_keys(array_keys($provided), '');
 
             if (!empty($typedLiterals)) {
                 foreach ($typedLiterals as $typedLiteral) {
@@ -194,21 +264,21 @@ class TemplatePlugin extends OntoWiki_Plugin
                         }
                     }
 
-                    if (array_key_exists($typedLiteral['uri'], $addPropertyValues)) {
-                        $addPropertyValues[$typedLiteral['uri']] = array(
-                            'datatype' => $typedLiteral['typed'],
+                    if (array_key_exists($typedLiteral['uri'], $provided)) {
+                        $provided[$typedLiteral['uri']] = array(
+                            'datatype' => $typedLiteral['typed']
                         );
                     }
                 }
             }
 
-            $event->addPropertyValues = $addPropertyValues;
+            $event->addPropertyValues = $this->_addInformation($provided);
 
         // Edit mode
         } elseif (!empty($class) && $workingMode == 'edit') {
             $class = $class[0]['class'];
-
-            $properties = $this->_getProvidedProperties($model, $class, true);
+            $properties = $this->_getTemplateProperties('provided', $class, true);
+            $optionalProperties = $this->_getTemplateProperties('optional', $class, true);
             $result = $properties['results']['bindings'];
 
             if (empty($result)) {
@@ -219,15 +289,14 @@ class TemplatePlugin extends OntoWiki_Plugin
                 $provided[] = $property['uri']['value'];
             }
 
-            $query = 'PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> ' . PHP_EOL;
-            $query.= 'SELECT ?uri ?value { ' . PHP_EOL;
-            $query.= '  ?template a <' . $this->_template . '> . ' . PHP_EOL;
-            $query.= '  ?template erm:providesProperty ?uri . ' . PHP_EOL;
-            $query.= '  ?template erm:bindsClass <' . $class . '> . ' . PHP_EOL;
+            $query = 'SELECT ?uri ?value { ' . PHP_EOL;
+            $query.= '  ?template a <' . $this->_templateUri . '>. ' . PHP_EOL;
+            $query.= '  ?template <' . $this->_providedPropertiesUri . '> ?uri . ' . PHP_EOL;
+            $query.= '  ?template ' . $this->_bindsClassUri . ' <' . $class . '> . ' . PHP_EOL;
             $query.= '  <' . $resource . '> ?uri ?value . ' . PHP_EOL;
-            $query.= '} LIMIT 20 ' . PHP_EOL;
+            $query.= '} ' . PHP_EOL;
 
-            $properties = $model->sparqlQuery($query, array('result_format' => 'extended'));
+            $properties = $this->_model->sparqlQuery($query, array('result_format' => 'extended'));
             $result = $properties['results']['bindings'];
 
             $provided = array_flip($provided);
@@ -237,16 +306,43 @@ class TemplatePlugin extends OntoWiki_Plugin
                 foreach ($result as $typedLiteral) {
                     if (array_key_exists($typedLiteral['uri']['value'], $provided)) {
                         $provided[$typedLiteral['uri']['value']] = array(
-                            'datatype' => $typedLiteral['value']['value'],
+                            'datatype' => $typedLiteral['value']['value']
                         );
                     }
                 }
             } else {
                 return false;
             }
-            $event->addPropertyValues = $provided;
+            $event->addPropertyValues = $this->_addInformation($provided);
         } else {
             return false;
+        }
+
+        // Get optional Properties
+
+        if (!(empty($result))) {
+            $result = $optionalProperties['results']['bindings'];
+            $optional = array();
+
+            foreach ($result as $property) {
+                $optional[] = $property['uri']['value'];
+            }
+
+            $optional = array_flip($optional);
+            $optional = array_fill_keys(array_keys($optional), '');
+
+            $typedLiterals = $this->_getDatatypesForProperties($optional, false);
+
+            if (!empty($typedLiterals)) {
+                foreach ($typedLiterals as $typedLiteral) {
+                    if (array_key_exists($typedLiteral['uri'], $optional)) {
+                        $optional[$typedLiteral['uri']] = array(
+                            'datatype' => $typedLiteral['typed']
+                        );
+                    }
+                }
+            }
+            $event->addOptionalPropertyValues = $this->_addInformation($optional);
         }
 
         $event->properties = $properties;
@@ -258,7 +354,7 @@ class TemplatePlugin extends OntoWiki_Plugin
      * where the needle was found
      * @param $needle
      * @param $haystack
-     * @return string $key of the haystack
+     * @return string $key
      */
     private function _recursiveArraySearch($needle, $haystack)
     {
@@ -276,33 +372,50 @@ class TemplatePlugin extends OntoWiki_Plugin
      * This method fires a SPARQL-Query to find out if a template for a given 
      * class exists and if so, it looks for the provided properties of this 
      * template and returns them.
-     * @param $model the model the event object got
+     * @param $mode the type of template properties: 'prvodided' or 'optional'
      * @param $class the class needed to find a template
      * @param boolean $extended determines if Query should use extende results
      * @return array $result the unverified result of the SPARQL query
      */
-    private function _getProvidedProperties($model, $class, $extended) 
+    private function _getTemplateProperties($mode = 'provided', $class, $extended) 
     {
+        if ($mode === 'optional') {
+            $mode = $this->_optionalPropertiesUri;
+        } elseif ($mode === 'provided') {
+            $mode = $this->_providedPropertiesUri;
+        } else {
+            return false;
+        }
+
         // Query for create instance (only class needed)
         $query = new Erfurt_Sparql_SimpleQuery();
-        $query->setProloguePart('PREFIX erm: <http://vocab.ub.uni-leipzig.de/bibrm/> SELECT DISTINCT ?uri');
-        $query->setWherePart( '{?template a <' . $this->_template . '> .
-                                ?template erm:providesProperty ?uri .
-                                ?template erm:bindsClass <' . $class . '> .
-                            } '
+        $query->setProloguePart('SELECT DISTINCT ?uri');
+        $query->setWherePart( '{?template a <' . $this->_templateUri . '>.
+                                ?template <' . $mode . '> ?uri .
+                                ?template <' . $this->_bindsClassUri . '> <' . $class . '> .
+                               } '
                 );
 
         if ($extended === false) {
-            $result = $model->sparqlQuery($query);
+            $result = $this->_model->sparqlQuery($query);
         } else {
-            $result = $model->sparqlQuery($query, array('result_format'=>'extended'));
+            $result = $this->_model->sparqlQuery($query, array('result_format'=>'extended'));
         }
 
         return $result;
 
     }
 
-    private function _getDatatypesForProperties ($model, $properties, $extended) 
+    /**
+     * This method returns the result of a SPARQL query that searches typed 
+     * literals of resources given in an array with help of rdfs:range and 
+     * owl:DatatypeProperty
+     * @param array $properties an array cotaining resources as values
+     * @param boolean $extended an option if a extended SPARQL query should be 
+     * used. The default is true
+     * @return array $result the query result
+     */
+    private function _getDatatypesForProperties ($properties, $extended = true) 
     {
         $query = 'PREFIX rdfs: <'. EF_RDFS_NS . '>' . PHP_EOL;
         $query.= 'PREFIX rdf: <' . EF_RDF_NS . '>' . PHP_EOL;
@@ -320,11 +433,38 @@ class TemplatePlugin extends OntoWiki_Plugin
         $query.= '  LIMIT 20 ' . PHP_EOL;
 
         if ($extended === false) {
-            $result = $model->sparqlQuery($query);
+            $result = $this->_model->sparqlQuery($query);
         } else {
-            $result = $model->sparqlQuery($query, array('result_format'=>'extended'));
+            $result = $this->_model->sparqlQuery($query, array('result_format'=>'extended'));
         }
 
         return $result;
+    }
+
+    /**
+     * This methods adds titles with help of TitleHelper and (if $typedLiterals given) 
+     * the datatypes of the range of a URI
+     * @param array $properties
+     * @param array $typedLiterals optional an array containing information 
+     * about ranges of DatatypeProperties
+     * @return array $properties an enriched version of the input properties 
+     * array
+    */
+    private function _addInformation($properties, $typedLiterals = null)
+    {
+        foreach ($properties as $property => $value) {
+            $properties[$property]['title'] = $this->_titleHelper->getTitle($property);
+        }
+
+        if ($typedLiterals !== null) {
+            foreach ($typedLiterals as $typedLiteral) {
+                // Add Datatype
+                if (array_key_exists($typedLiteral['uri'], $properties)) {
+                    $properties[$typedLiteral['uri']]['datatype'] = $typedLiteral['typed'];
+                }
+            }
+        }
+
+        return $properties;
     }
 }

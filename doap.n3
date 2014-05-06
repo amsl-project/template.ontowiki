@@ -23,7 +23,7 @@
 ] ,
 [      a owconfig:Config;
       owconfig:id "template";
-      :restrictive false ;
+      :restrictive "true"^^xsd:boolean ;
 ] ;
   doap:release :v1-0 .
 :v1-0 a doap:Version ;
