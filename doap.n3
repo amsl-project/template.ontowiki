@@ -23,11 +23,7 @@
 ] ,
 [      a owconfig:Config;
       owconfig:id "template";
-<<<<<<< HEAD
       :restrictive "true"^^xsd:boolean ;
-=======
-      :restrictive "false"^^xsd:boolean ;
->>>>>>> 69bb82c... Fix 'false' literal with correct datatype
 ] ;
   doap:release :v1-0 .
 :v1-0 a doap:Version ;
