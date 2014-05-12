@@ -19,12 +19,12 @@
   owconfig:config [
       a owconfig:Config;
       owconfig:id "template";
-      :subform true ;
-] ,
-[      a owconfig:Config;
-      owconfig:id "template";
       :restrictive "true"^^xsd:boolean ;
-] ;
+      :templateUri           <http://ns.ontowiki.net/SysOnt/Template> ;
+      :bindsClassUri         <http://ns.ontowiki.net/SysOnt/bindsClass> ;
+      :providedPropertiesUri <http://ns.ontowiki.net/SysOnt/providedProperty> ;
+      :optionalPropertiesUri <http://ns.ontowiki.net/SysOnt/optionalProperty> ;
+  ] ;
   doap:release :v1-0 .
-:v1-0 a doap:Version ;
+  :v1-0 a doap:Version ;
   doap:revision "1.0" .
