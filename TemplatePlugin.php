@@ -62,23 +62,21 @@ class TemplatePlugin extends OntoWiki_Plugin
         $predicates         = $event->predicates;
         $description        = $resource->getDescription();
         $this->_titleHelper = new OntoWiki_Model_TitleHelper($this->_model);
+        $html               = '';
 
-        if ($this->_privateConfig->template->restrictive) {
-            foreach ($description as $resource) {
-                if (isset($resource[EF_RDF_TYPE])) {
-                    $type = $resource[EF_RDF_TYPE][0]['value'];
-                }
-            }
-
-            if (!isset($type)) {
-                return false;
-            } else {
-                $providedProperties = $this->_getTemplateProperties('provided', $type, false);
-                $optionalProperties = $this->_getTemplateProperties('optional', $type, false);
+        foreach ($description as $resource) {
+            if (isset($resource[EF_RDF_TYPE])) {
+                $type = $resource[EF_RDF_TYPE][0]['value'];
             }
         }
 
-        if(!empty($providedProperties)) {
+        if (!isset($type)) {
+            return false;
+        } else {
+            $providedProperties = $this->_getTemplateProperties('provided', $type, false);
+            $optionalProperties = $this->_getTemplateProperties('optional', $type, false);
+        }
+        if($providedProperties !== false) {
             $properties = array();
 
             foreach ($providedProperties as $uri) {
@@ -97,7 +95,7 @@ class TemplatePlugin extends OntoWiki_Plugin
             }
 
             // write HTML5 data-* attributes for RDFauthor
-            $html = '<div id=\'template-properties\' data-properties=\'';
+            $html.= '<div id=\'template-properties\' data-properties=\'';
             $html.= json_encode($properties);
             $html.= '\' ></div>' . PHP_EOL;
 
@@ -125,10 +123,11 @@ class TemplatePlugin extends OntoWiki_Plugin
                 $matched   = array_merge_recursive($intersect, $matched);
             }
 
-            $event->predicates = $matched;
-        } else {
-            return false;
+            if ($this->_privateConfig->template->restrictive) {
+                $event->predicates = $matched;
+            }
         }
+
 
         if($optionalProperties !== false) {
             $properties = array();
@@ -154,7 +153,9 @@ class TemplatePlugin extends OntoWiki_Plugin
             $html.= '\' ></div>' . PHP_EOL;
         }
 
-        $event->templateHtml = $html;
+        if(strlen($html) > 1) {
+            $event->templateHtml = $html;
+        }
 
         return true;
     }
@@ -402,7 +403,11 @@ class TemplatePlugin extends OntoWiki_Plugin
             $result = $this->_model->sparqlQuery($query, array('result_format'=>'extended'));
         }
 
-        return $result;
+        if(count($result) > 0) {
+            return $result;
+        } else {
+            return false;
+        }
 
     }
 
@@ -453,7 +458,7 @@ class TemplatePlugin extends OntoWiki_Plugin
     private function _addInformation($properties, $typedLiterals = null)
     {
         foreach ($properties as $property => $value) {
-            $properties[$property]['title'] = $this->_titleHelper->getTitle($property);
+            $properties[$property]['label'] = $this->_titleHelper->getTitle($property);
         }
 
         if ($typedLiterals !== null) {
