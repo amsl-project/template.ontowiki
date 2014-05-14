@@ -293,7 +293,7 @@ class TemplatePlugin extends OntoWiki_Plugin
             $query = 'SELECT ?uri ?value { ' . PHP_EOL;
             $query.= '  ?template a <' . $this->_templateUri . '>. ' . PHP_EOL;
             $query.= '  ?template <' . $this->_providedPropertiesUri . '> ?uri . ' . PHP_EOL;
-            $query.= '  ?template ' . $this->_bindsClassUri . ' <' . $class . '> . ' . PHP_EOL;
+            $query.= '  ?template <' . $this->_bindsClassUri . '> <' . $class . '> . ' . PHP_EOL;
             $query.= '  <' . $resource . '> ?uri ?value . ' . PHP_EOL;
             $query.= '} ' . PHP_EOL;
 
