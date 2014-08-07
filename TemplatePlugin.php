@@ -69,7 +69,6 @@ class TemplatePlugin extends OntoWiki_Plugin
                 $type = $resource[EF_RDF_TYPE][0]['value'];
             }
         }
-
         if (!isset($type)) {
             return false;
         } else {
@@ -99,35 +98,23 @@ class TemplatePlugin extends OntoWiki_Plugin
             $html.= json_encode($properties);
             $html.= '\' ></div>' . PHP_EOL;
 
-            $propertyRange = array();
-            $providedProperties = array_merge($providedProperties, $propertyRange);
-
-            // flatten Array and flip keys with values to use array_intersect_key
-            $providedProperties = array_map(function($x) {return array_flip($x);},$providedProperties);
-            // FIXME Find a method to add standard properties which will be 
-            // displayed by default
-            $providedProperties[] = array(EF_RDF_TYPE => '');
-            $providedProperties[] = array(EF_RDFS_LABEL => '');
-            $newResult = array();
-
-            foreach ($providedProperties as $newKey => $newValue) {
-                $newResult = array_merge($newResult,$newValue);
-            }
-
-            $matched = array();
-            $n = 0;
-
-            foreach($predicates as $key => $graphPredicates) {
-                $intersect = array_intersect_key($predicates[$key],$newResult);
-                $intersect = array((string)$key=>$intersect);
-                $matched   = array_merge_recursive($intersect, $matched);
-            }
-
             if ($this->_privateConfig->template->restrictive) {
-                $event->predicates = $matched;
+                $propertyRange = array();
+                $providedProperties = array_merge($providedProperties, $propertyRange);
+
+                // flatten Array and flip keys with values to use array_intersect_key
+                $providedProperties = array_map(function($x) {return array_flip($x);},$providedProperties);
+                // FIXME Find a method to add standard properties which will be 
+                // displayed by default
+                $providedProperties[] = array(EF_RDF_TYPE => '');
+                $providedProperties[] = array(EF_RDFS_LABEL => '');
+                $provResult = array();
+
+                foreach ($providedProperties as $newKey => $newValue) {
+                    $provResult = array_merge($provResult,$newValue);
+                }
             }
         }
-
 
         if($optionalProperties !== false) {
             $properties = array();
@@ -137,7 +124,6 @@ class TemplatePlugin extends OntoWiki_Plugin
             }
 
             $typedLiterals = $this->_getDatatypesForProperties($properties, false);
-
             $properties = array_flip($properties);
             $properties = array_fill_keys(array_keys($properties), '');
 
@@ -151,6 +137,51 @@ class TemplatePlugin extends OntoWiki_Plugin
             $html.= '<div id=\'template-optional-properties\' data-properties=\'';
             $html.= json_encode($properties);
             $html.= '\' ></div>' . PHP_EOL;
+
+            if ($this->_privateConfig->template->restrictive) {
+                $propertyRange = array();
+                $optionalProperties = array_merge($optionalProperties, $propertyRange);
+
+                // flatten Array and flip keys with values to use array_intersect_key
+                $optionalProperties = array_map(function($x) {return array_flip($x);},$optionalProperties);
+                $optResult = array();
+
+                foreach ($optionalProperties as $newKey => $newValue) {
+                    $optResult = array_merge($optResult,$newValue);
+                }
+            }
+        }
+
+        if ($this->_privateConfig->template->restrictive) {
+            # Merge the found flattened arrays of optional and provided properties 
+            # to use it for an intersection
+            if (isset($provResult) && isset($optResult)) {
+                $foundPropertiesArray = array_merge($provResult, $optResult);
+            } elseif (isset($provResult)) {
+                # if no optional Properties were given, only use provided 
+                # Properties 
+                $foundPropertiesArray = $provResult;
+            } elseif (isset($provResult)) {
+                $foundPropertiesArray = $optResult;
+            } else {
+                # this means there exists a template without information about 
+                # properties
+                $foundPropertiesArray = array();
+            }
+
+            $matched = array();
+            $n = 0;
+
+            foreach($predicates as $key => $graphPredicates) {
+                $intersect = array_intersect_key($predicates[$key],$foundPropertiesArray);
+                $intersect = array((string)$key=>$intersect);
+                $matched   = array_merge_recursive($intersect, $matched);
+            }
+
+            $event->predicates = $matched;
+        } else {
+            # Return what we got
+            $event->predicates = $event->predicates;
         }
 
         if(strlen($html) > 1) {
