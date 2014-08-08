@@ -72,9 +72,14 @@ class TemplatePlugin extends OntoWiki_Plugin
         if (!isset($type)) {
             return false;
         } else {
-            $providedProperties = $this->_getTemplateProperties('provided', $type, false);
-            $optionalProperties = $this->_getTemplateProperties('optional', $type, false);
+            if ($this->_templateExists($type) !== false) {
+                $providedProperties = $this->_getTemplateProperties('provided', $type, false);
+                $optionalProperties = $this->_getTemplateProperties('optional', $type, false);
+            } else {
+                return false;
+            }
         }
+
         if($providedProperties !== false) {
             $properties = array();
 
@@ -114,6 +119,8 @@ class TemplatePlugin extends OntoWiki_Plugin
                     $provResult = array_merge($provResult,$newValue);
                 }
             }
+        } else {
+            return false;
         }
 
         if($optionalProperties !== false) {
@@ -152,6 +159,10 @@ class TemplatePlugin extends OntoWiki_Plugin
             }
         }
 
+        if(strlen($html) > 1) {
+            $event->templateHtml = $html;
+        }
+
         if ($this->_privateConfig->template->restrictive) {
             # Merge the found flattened arrays of optional and provided properties 
             # to use it for an intersection
@@ -179,13 +190,6 @@ class TemplatePlugin extends OntoWiki_Plugin
             }
 
             $event->predicates = $matched;
-        } else {
-            # Return what we got
-            $event->predicates = $event->predicates;
-        }
-
-        if(strlen($html) > 1) {
-            $event->templateHtml = $html;
         }
 
         return true;
@@ -502,5 +506,29 @@ class TemplatePlugin extends OntoWiki_Plugin
         }
 
         return $properties;
+    }
+    /**
+     * This method checks if a template for a given class exists
+     * @param $class the class a template should be found for
+     * @return boolean
+    */ 
+    private function _templateExists($class) 
+    {
+        // Query for create instance (only class needed)
+        $query = new Erfurt_Sparql_SimpleQuery();
+        $query->setProloguePart('SELECT DISTINCT ?template');
+        $query->setWherePart( '{?template a <' . $this->_templateUri . '>.
+                                ?template <' . $this->_bindsClassUri . '> <' . $class . '> .
+                               } '
+                );
+
+        $result = $this->_model->sparqlQuery($query);
+
+        if(count($result) > 0) {
+            return true;
+        } else {
+            return false;
+        }
+
     }
 }
