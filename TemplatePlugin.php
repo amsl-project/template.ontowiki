@@ -225,8 +225,12 @@ class TemplatePlugin extends OntoWiki_Plugin
                 }
             }
 
-            $properties = $this->_getTemplateProperties('provided', $parameter, true);
-            $optionalProperties = $this->_getTemplateProperties('optional', $parameter, true);
+            if ($this->_templateExists($parameter) !== false) {
+                $properties = $this->_getTemplateProperties('provided', $parameter, true);
+                $optionalProperties = $this->_getTemplateProperties('optional', $parameter, true);
+            } else {
+                return false;
+           }
 
             if (empty($properties)) {
                 return false;
