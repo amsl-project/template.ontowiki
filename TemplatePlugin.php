@@ -212,18 +212,19 @@ class TemplatePlugin extends OntoWiki_Plugin
         $parameter          = $event->parameter;
         $this->_titleHelper = new OntoWiki_Model_TitleHelper($this->_model);
 
+        if ($workingMode == 'clone') {
+            $resourceForClassQuery = $parameter;
+        } else {
+            $resourceForClassQuery = $resource;
+        }
+
         $query = 'SELECT DISTINCT ?class WHERE { ' . PHP_EOL;
-        $query.= '<' . $resource . '> a ?class . } ' . PHP_EOL;
+        $query.= '<' . $resourceForClassQuery . '> a ?class . } ' . PHP_EOL;
 
         $class = $this->_model->sparqlQuery($query);
 
         // Class mode
         if ($workingMode == 'class') {
-            if (!empty($class)) {
-                if ($class['0']['uri'] == $resource) {
-                    $parameter = $resource;
-                }
-            }
 
             if ($this->_templateExists($parameter) !== false) {
                 $properties = $this->_getTemplateProperties('provided', $parameter, true);
@@ -314,9 +315,16 @@ class TemplatePlugin extends OntoWiki_Plugin
 
             $event->addPropertyValues = $this->_addInformation($provided);
 
-        // Edit mode
-        } elseif (!empty($class) && $workingMode == 'edit') {
+        // Edit and Clone mode
+        } elseif (!empty($class) && ($workingMode == 'clone' || $workingMode == 'edit')) {
             $class = $class[0]['class'];
+
+            if ($this->_templateExists($class) !== false) {
+                $properties = $this->_getTemplateProperties('provided', $parameter, true);
+                $optionalProperties = $this->_getTemplateProperties('optional', $parameter, true);
+            } else {
+                return false;
+            }
             $properties = $this->_getTemplateProperties('provided', $class, true);
             $optionalProperties = $this->_getTemplateProperties('optional', $class, true);
             $result = $properties['results']['bindings'];
@@ -333,25 +341,45 @@ class TemplatePlugin extends OntoWiki_Plugin
             $query.= '  ?template a <' . $this->_templateUri . '>. ' . PHP_EOL;
             $query.= '  ?template <' . $this->_providedPropertiesUri . '> ?uri . ' . PHP_EOL;
             $query.= '  ?template <' . $this->_bindsClassUri . '> <' . $class . '> . ' . PHP_EOL;
-            $query.= '  <' . $resource . '> ?uri ?value . ' . PHP_EOL;
+            if ($workingMode === 'clone') {
+                $query .= '  <' . $parameter . '> ?uri ?value . ' . PHP_EOL;
+            } else {
+                $query .= '  <' . $resource . '> ?uri ?value . ' . PHP_EOL;
+            }
             $query.= '} ' . PHP_EOL;
 
             $properties = $this->_model->sparqlQuery($query, array('result_format' => 'extended'));
-            $result = $properties['results']['bindings'];
+            $foundPO = $properties['results']['bindings'];
+            if (!empty($foundPO)) {
+                // Add rdf:type and the class
+                $arrayPos = $this->_recursiveArraySearch(EF_RDF_TYPE, $foundPO);
+                if ($arrayPos === false) {
+                    $properties['results']['bindings'][] = array(
+                        'uri' => array('type' => 'uri',
+                            'value' => EF_RDF_TYPE),
+                        'value' => array ('type' => 'uri',
+                            'value' =>  $class )
+                    );
+                }
+            } else {
+                return false;
+            }
+
+            // refresh
+            $foundPO = $properties['results']['bindings'];
 
             $provided = array_flip($provided);
             $provided = array_fill_keys(array_keys($provided), '');
 
-            if (!empty($result)) {
-                foreach ($result as $typedLiteral) {
-                    if (array_key_exists($typedLiteral['uri']['value'], $provided)) {
-                        $provided[$typedLiteral['uri']['value']] = array(
-                            'datatype' => $typedLiteral['value']['value']
-                        );
+            foreach ($foundPO as $typedLiteral) {
+                if (array_key_exists($typedLiteral['uri']['value'], $provided)) {
+                    $provided[$typedLiteral['uri']['value']] = array(
+                        'type' => $typedLiteral['value']['type']
+                    );
+                    if (isset($typedLiteral['value']['datatype'])) {
+                        $provided[$typedLiteral['uri']['value']]['datatype'] = $typedLiteral['value']['datatype'];
                     }
                 }
-            } else {
-                return false;
             }
             $event->addPropertyValues = $this->_addInformation($provided);
         } else {
@@ -362,27 +390,29 @@ class TemplatePlugin extends OntoWiki_Plugin
 
         if (!(empty($result))) {
             $result = $optionalProperties['results']['bindings'];
-            $optional = array();
+            if (!(empty($result))) {
+                $optional = array();
 
-            foreach ($result as $property) {
-                $optional[] = $property['uri']['value'];
-            }
+                foreach ($result as $property) {
+                    $optional[] = $property['uri']['value'];
+                }
 
-            $optional = array_flip($optional);
-            $optional = array_fill_keys(array_keys($optional), '');
+                $optional = array_flip($optional);
+                $optional = array_fill_keys(array_keys($optional), '');
 
-            $typedLiterals = $this->_getDatatypesForProperties($optional, false);
+                $typedLiterals = $this->_getDatatypesForProperties($optional, false);
 
-            if (!empty($typedLiterals)) {
-                foreach ($typedLiterals as $typedLiteral) {
-                    if (array_key_exists($typedLiteral['uri'], $optional)) {
-                        $optional[$typedLiteral['uri']] = array(
-                            'datatype' => $typedLiteral['typed']
-                        );
+                if (!empty($typedLiterals)) {
+                    foreach ($typedLiterals as $typedLiteral) {
+                        if (array_key_exists($typedLiteral['uri'], $optional)) {
+                            $optional[$typedLiteral['uri']] = array(
+                                'type' => $typedLiteral['typed']
+                            );
+                        }
                     }
                 }
+                $event->addOptionalPropertyValues = $this->_addInformation($optional);
             }
-            $event->addOptionalPropertyValues = $this->_addInformation($optional);
         }
 
         $event->properties = $properties;
