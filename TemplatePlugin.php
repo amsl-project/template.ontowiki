@@ -504,7 +504,6 @@ class TemplatePlugin extends OntoWiki_Plugin
         $query.= '  FILTER ( ' . PHP_EOL;
         $query.= '    ?uri = <' . implode('> || ?uri = <', $properties) . '> ) ' . PHP_EOL;
         $query.= '  )' . PHP_EOL;
-        $query.= '  LIMIT 20 ' . PHP_EOL;
 
         if ($extended === false) {
             $result = $this->_model->sparqlQuery($query);
