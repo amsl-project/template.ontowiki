@@ -20,10 +20,10 @@
       a owconfig:Config;
       owconfig:id "template";
       :restrictive "true"^^xsd:boolean ;
-      :templateUri           <http://vocab.ub.uni-leipzig.de/bibrm/Template> ;
-      :bindsClassUri         <http://vocab.ub.uni-leipzig.de/bibrm/bindsClass> ;
-      :providedPropertiesUri <http://vocab.ub.uni-leipzig.de/bibrm/providedProperty> ;
-      :optionalPropertiesUri <http://vocab.ub.uni-leipzig.de/bibrm/optionalProperty> ;
+      :templateUri           <http://vocab.ub.uni-leipzig.de/terms/Template> ;
+      :bindsClassUri         <http://vocab.ub.uni-leipzig.de/terms/bindsClass> ;
+      :providedPropertiesUri <http://vocab.ub.uni-leipzig.de/terms/providedProperty> ;
+      :optionalPropertiesUri <http://vocab.ub.uni-leipzig.de/terms/optionalProperty> ;
   ] ;
   doap:release :v1-0 .
   :v1-0 a doap:Version ;
