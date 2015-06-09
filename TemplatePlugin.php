@@ -320,13 +320,12 @@ class TemplatePlugin extends OntoWiki_Plugin
             $class = $class[0]['class'];
 
             if ($this->_templateExists($class) !== false) {
-                $properties = $this->_getTemplateProperties('provided', $parameter, true);
-                $optionalProperties = $this->_getTemplateProperties('optional', $parameter, true);
+                $properties = $this->_getTemplateProperties('provided', $class, true);
+                $optionalProperties = $this->_getTemplateProperties('optional', $class, true);
             } else {
                 return false;
             }
-            $properties = $this->_getTemplateProperties('provided', $class, true);
-            $optionalProperties = $this->_getTemplateProperties('optional', $class, true);
+
             $result = $properties['results']['bindings'];
 
             if (empty($result)) {
