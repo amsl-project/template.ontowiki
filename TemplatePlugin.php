@@ -342,10 +342,13 @@ class TemplatePlugin extends OntoWiki_Plugin
             $query.= '  ?template <' . $this->_providedPropertiesUri . '> ?uri . ' . PHP_EOL;
             $query.= '  ?template <' . $this->_bindsClassUri . '> <' . $class . '> . ' . PHP_EOL;
             if ($workingMode === 'clone') {
-                $query .= '  <' . $parameter . '> ?uri ?value . ' . PHP_EOL;
+                $query.= '  <' . $parameter . '> ?uri ?value . ' . PHP_EOL;
             } else {
                 $query .= '  <' . $resource . '> ?uri ?value . ' . PHP_EOL;
             }
+            $query.= '  OPTIONAL {' . PHP_EOL;
+            $query.= '    ?template <' . $this->_optionalPropertiesUri . '> ?uri . ' . PHP_EOL;
+            $query.= '  }' . PHP_EOL;
             $query.= '} ' . PHP_EOL;
 
             $properties = $this->_model->sparqlQuery($query, array('result_format' => 'extended'));
