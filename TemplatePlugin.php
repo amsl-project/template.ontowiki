@@ -337,7 +337,7 @@ class TemplatePlugin extends OntoWiki_Plugin
                 $provided[] = $property['uri']['value'];
             }
 
-            $query = 'SELECT ?uri ?value { ' . PHP_EOL;
+            $query = 'SELECT ?uri ?value FROM <http://amsl.technology/templates/> FROM <' . $this->_model . '> { ' . PHP_EOL;
             $query.= '  ?template <' . $this->_bindsClassUri . '> <' . $class . '> . ' . PHP_EOL;
             if ($workingMode === 'clone') {
                 $query.= '  <' . $parameter . '> ?uri ?value . ' . PHP_EOL;
@@ -349,7 +349,12 @@ class TemplatePlugin extends OntoWiki_Plugin
             $query.= '  }' . PHP_EOL;
             $query.= '} ' . PHP_EOL;
 
-            $properties = $this->_model->sparqlQuery($query, array('result_format' => 'extended'));
+            $options = Erfurt_App::getInstance()->getConfig()->toArray()['store']['virtuoso'];
+            $options['is_open_source_version'] = '1';
+            $backend = new Erfurt_Store_Adapter_Virtuoso($options);
+            $backend->init();
+            $properties = $backend->sparqlQuery($query, array('result_format' => 'extended'));
+
             $foundPO = $properties['results']['bindings'];
             if (!empty($foundPO)) {
                 // Add rdf:type and the class
